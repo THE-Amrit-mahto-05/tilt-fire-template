@@ -1,19 +1,19 @@
 import { StatusBar } from "expo-status-bar";
 import { useState, useEffect } from "react";
-import { View, StyleSheet, Dimensions, Text } from "react-native";
+import { View, StyleSheet, Dimensions, Text, TouchableOpacity } from "react-native";
 import { Accelerometer } from "expo-sensors";
 
 const { width: W, height: H } = Dimensions.get("window");
+
 const BALL_SIZE = 30;
 const HOLE_SIZE = 60;
-const CAPTURE_RADIUS = 80; 
-const CAPTURE_SPEED = 4; 
+const CAPTURE_RADIUS = 80;
+const CAPTURE_SPEED = 4;
 
 export default function App() {
   const [ballX, setBallX] = useState(W / 2 - BALL_SIZE / 2);
   const [ballY, setBallY] = useState(H / 2 - BALL_SIZE / 2);
   const [isCaptured, setIsCaptured] = useState(false);
-
   const randomHole = () => ({
     x: Math.random() * (W - HOLE_SIZE),
     y: Math.random() * (H - HOLE_SIZE - 100),
@@ -26,38 +26,56 @@ export default function App() {
 
   const [hole, setHole] = useState(randomHole());
   const [score, setScore] = useState(0);
+  const [lastScore, setLastScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+
+  const resetGame = () => {
+    setBallX(W / 2 - BALL_SIZE / 2);
+    setBallY(H / 2 - BALL_SIZE / 2);
+    setHole(randomHole());
+    setIsCaptured(false);
+    setScore(0);
+    setLastScore(0);
+    setGameOver(false);
+  };
 
   useEffect(() => {
     Accelerometer.setUpdateInterval(50);
-    const sub = Accelerometer.addListener(({ x, y }) => {
-      if (isCaptured) return; 
 
-      setBallX((prev) =>
-        Math.max(0, Math.min(prev - x * 30, W - BALL_SIZE))
-      );
-      setBallY((prev) =>
-        Math.max(0, Math.min(prev + y * 15, H - BALL_SIZE - 50))
-      );
+    const sub = Accelerometer.addListener(({ x, y }) => {
+      if (isCaptured || gameOver) return;
+
+      setBallX((prev) => Math.max(0, Math.min(prev - x * 30, W - BALL_SIZE)));
+      setBallY((prev) => Math.max(0, Math.min(prev + y * 15, H - BALL_SIZE - 50)));
     });
 
     return () => sub.remove();
-  }, [isCaptured]);
+  }, [isCaptured, gameOver]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newHole = randomHole();
-      const newBall = randomBall();
+    if (gameOver) return;
 
-      setHole(newHole);
-      setBallX(newBall.x);
-      setBallY(newBall.y);
-      setIsCaptured(false);
+    const interval = setInterval(() => {
+      if (score === lastScore) {
+        setGameOver(true);
+      } else {
+        setLastScore(score);
+
+        const newHole = randomHole();
+        const newBall = randomBall();
+
+        setHole(newHole);
+        setBallX(newBall.x);
+        setBallY(newBall.y);
+        setIsCaptured(false);
+      }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
-
+  }, [score, lastScore, gameOver]);
   useEffect(() => {
+    if (gameOver) return;
+
     const interval = setInterval(() => {
       const holeCenterX = hole.x + HOLE_SIZE / 2;
       const holeCenterY = hole.y + HOLE_SIZE / 2;
@@ -67,16 +85,12 @@ export default function App() {
 
       const dx = holeCenterX - ballCenterX;
       const dy = holeCenterY - ballCenterY;
-
       const distance = Math.sqrt(dx * dx + dy * dy);
-
       if (distance < CAPTURE_RADIUS) {
         setIsCaptured(true);
-
         setBallX((prev) => prev + (dx / distance) * CAPTURE_SPEED);
         setBallY((prev) => prev + (dy / distance) * CAPTURE_SPEED);
       }
-
       const inside =
         ballX >= hole.x &&
         ballX + BALL_SIZE <= hole.x + HOLE_SIZE &&
@@ -97,33 +111,19 @@ export default function App() {
     }, 30);
 
     return () => clearInterval(interval);
-  }, [ballX, ballY, hole]);
+  }, [ballX, ballY, hole, gameOver]);
 
   return (
-    <View style={styles.container}>
+    <TouchableOpacity style={styles.container} onPress={() => gameOver && resetGame()}>
       <Text style={styles.score}>Score: {score}</Text>
 
-      <View
-        style={[
-          styles.hole,
-          {
-            left: hole.x,
-            top: hole.y,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.ball,
-          {
-            left: ballX,
-            top: ballY,
-          },
-        ]}
-      />
+      {gameOver && <Text style={styles.gameOverText}>GAME OVER </Text>}
+
+      <View style={[styles.hole, { left: hole.x, top: hole.y }]} />
+      <View style={[styles.ball, { left: ballX, top: ballY }]} />
 
       <StatusBar style="auto" />
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -137,6 +137,13 @@ const styles = StyleSheet.create({
     fontSize: 26,
     marginTop: 40,
     textAlign: "center",
+  },
+  gameOverText: {
+    color: "red",
+    fontSize: 32,
+    textAlign: "center",
+    marginTop: 200,
+    fontWeight: "bold",
   },
   ball: {
     position: "absolute",
